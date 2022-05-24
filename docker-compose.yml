@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - POSTGRES_DB=${DATABASE_NAME}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: always
+
+  web:
+    build: .
+    command: bash -c "python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_NAME=${DATABASE_NAME}
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+    depends_on:
+      - db
+
+  redis:
+    build:
+      context: .
+      dockerfile: srv/redis/Dockerfile
+    ports:
+      - "6379:6379"
+
+  celery:
+    restart: always
+    build:
+      context: .
+      dockerfile: srv/celery/Dockerfile
+    command: bash -c "python manage.py makemigrations && python manage.py migrate && celery -A innowisetest worker -l info"
+    volumes:
+      - ./:/app
+    depends_on:
+      - redis
+      - db
+
+  celery_beat:
+    restart: always
+    build:
+      context: .
+      dockerfile: srv/beat/Dockerfile
+    volumes:
+      - ./:/app
+    command: celery -A innowisetest beat -l info
+    depends_on:
+      - db
+      - redis
